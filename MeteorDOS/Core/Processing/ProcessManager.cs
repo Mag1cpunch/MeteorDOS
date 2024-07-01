@@ -29,12 +29,11 @@ namespace MeteorDOS.Core.Processing
             Process process = new Process(name, CurrentID, RunFunction);
             CurrentID++;
         }
-        public static void Yield()
+        public static void ExecuteThreads()
         {
             for (int i = Processes.Count - 1; i >= 0; i--)
             {
                 Processes[i].Run();
-                CurrentID--;
             }
         }
     }

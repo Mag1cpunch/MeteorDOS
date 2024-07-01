@@ -7,6 +7,7 @@ using System.Text;
 using Sys = Cosmos.System;
 using MeteorDOS.Core.Processing;
 using MeteorDOS.Core.Processing.Threading;
+using MeteorDOS.Core.DE;
 
 namespace MeteorDOS
 {
@@ -104,6 +105,8 @@ namespace MeteorDOS
             //    Console.ReadLine();
             //    Sys.Power.Shutdown();
             //}
+            DesktopManager.Init(800, 600);
+            DesktopManager.Run();
             Console.Clear();
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("[[ ------------------------------------------ ]]");
