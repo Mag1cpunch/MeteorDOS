@@ -1,4 +1,5 @@
-﻿using MeteorDOS.Core.Packages;
+﻿using MeteorDOS.Core.Filesystem;
+using MeteorDOS.Core.Packages;
 using MeteorDOS.Core.Processing;
 using MeteorDOS.Core.Processing.CommandManager;
 using System;
@@ -11,6 +12,7 @@ namespace MeteorDOS.Core
     public unsafe class DOSShell
     {
         public static CommandExecutionStatus CMDStatus = CommandExecutionStatus.None;
+        public static MOFS fs;
         public static void InitShell()
         {
             CDCommand cd = new CDCommand();
@@ -22,6 +24,11 @@ namespace MeteorDOS.Core
             RemoveUserCommand removeUserCommand = new RemoveUserCommand();
             LSCommand LSCommand = new LSCommand();
             EchoCommand echoCommand = new EchoCommand();
+            CreatePartCommand createPartCommand = new CreatePartCommand();
+            MOFSFormatCommand mOFSFormatCommand = new MOFSFormatCommand();
+            MOFSInitCommand mOFSInitCommand = new MOFSInitCommand();
+            MOFSReadMSGCommand mOFSReadMSGCommand = new MOFSReadMSGCommand();
+            MOFSWriteMSGCommand mOFSWriteMSGCommand = new MOFSWriteMSGCommand();
             Commands.RegisterCommand(cd);
             Commands.RegisterCommand(rebootCommand);
             Commands.RegisterCommand(shutdownCommand);
@@ -31,6 +38,12 @@ namespace MeteorDOS.Core
             Commands.RegisterCommand(removeUserCommand);
             Commands.RegisterCommand(LSCommand);
             Commands.RegisterCommand(echoCommand);
+            Commands.RegisterCommand(createPartCommand);
+            Commands.RegisterCommand(mOFSFormatCommand);
+            Commands.RegisterCommand(mOFSInitCommand);
+            Commands.RegisterCommand(mOFSReadMSGCommand);
+            Commands.RegisterCommand(mOFSWriteMSGCommand);
+            UserManager.CurrentUser = "root";
         }
         public static void KeyHandler()
         {

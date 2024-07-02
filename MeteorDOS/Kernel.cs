@@ -8,6 +8,8 @@ using Sys = Cosmos.System;
 using MeteorDOS.Core.Processing;
 using MeteorDOS.Core.Processing.Threading;
 using MeteorDOS.Core.DE;
+using Cosmos.Core.Memory;
+using System.IO;
 
 namespace MeteorDOS
 {
@@ -28,56 +30,56 @@ namespace MeteorDOS
             if (FirstTime == false)
             {
                 Environment.CurrentDirectory = @"0:\";
-                Console.WriteLine("Verifing Filesystem...");
-                if (!VFSManager.DirectoryExists(@"0:\Core"))
-                {
-                    VFSManager.CreateDirectory(@"0:\Core");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\AppFilesX86"))
-                {
-                    VFSManager.CreateDirectory(@"0:\AppFilesX86");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\AppFilesX64"))
-                {
-                    VFSManager.CreateDirectory(@"0:\AppFilesX64");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\Users"))
-                {
-                    VFSManager.CreateDirectory(@"0:\Users");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\Users\root"))
-                {
-                    VFSManager.CreateDirectory(@"0:\Users\root");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\Users\root\AppData"))
-                {
-                    VFSManager.CreateDirectory(@"0:\Users\root\AppData");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\Users\root\Downloads"))
-                {
-                    VFSManager.CreateDirectory(@"0:\Users\root\Downloads");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\Users\root\Pictures"))
-                {
-                    VFSManager.CreateDirectory(@"0:\Users\root\Pictures");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\Users\root\Videos"))
-                {
-                    VFSManager.CreateDirectory(@"0:\Users\root\Videos");
-                }
-                if (!VFSManager.DirectoryExists(@"0:\Users\root\Documents"))
-                {
-                    VFSManager.CreateDirectory(@"0:\Users\root\Documents");
-                }
-                Console.WriteLine("Done!");
+                //Console.WriteLine("Verifing Filesystem...");
+                //if (!VFSManager.DirectoryExists(@"0:\Core"))
+                //{
+                //    Directory.CreateDirectory(@"0:\Core");
+                //}
+                //if (!VFSManager.DirectoryExists(@"0:\AppFilesX86"))
+                //{
+                //    Directory.CreateDirectory(@"0:\AppFilesX86");
+                //}
+                //if (!VFSManager.DirectoryExists(@"0:\AppFilesX64"))
+                //{
+                //    Directory.CreateDirectory(@"0:\AppFilesX64");
+                //}
+                //if (!VFSManager.DirectoryExists(@"0:\Users"))
+                //{
+                //    Directory.CreateDirectory(@"0:\Users");
+                //}
+                //if (!VFSManager.DirectoryExists(@"0:\Users\root"))
+                //{
+                //    Directory.CreateDirectory(@"0:\Users\root");
+                //}
+                //if (!VFSManager.DirectoryExists(@"0:\Users\root\AppData"))
+                //{
+                //    Directory.CreateDirectory(@"0:\Users\root\AppData");
+                //}
+                //if (!VFSManager.DirectoryExists(@"0:\Users\root\Downloads"))
+                //{
+                //    Directory.CreateDirectory(@"0:\Users\root\Downloads");
+                //}
+                //if (!VFSManager.DirectoryExists(@"0:\Users\root\Pictures"))
+                //{
+                //    Directory.CreateDirectory(@"0:\Users\root\Pictures");
+                //}
+                //if (!VFSManager.DirectoryExists(@"0:\Users\root\Videos"))
+                //{
+                //    Directory.CreateDirectory(@"0:\Users\root\Videos");
+                //}
+                //if (!Directory.Exists(@"0:\Users\root\Documents"))
+                //{
+                //    Directory.CreateDirectory(@"0:\Users\root\Documents");
+                //}
+                //Console.WriteLine("Done!");
                 //RepairDisk();
                 DOSShell.InitShell();
                 FirstTime = true;
             }
-            if (!UserManager.UserExists("root"))
-            {
-                UserManager.CreateUser("root", "root");
-            }
+            //if (!UserManager.UserExists("root"))
+            //{
+            //    UserManager.CreateUser("root", "root");
+            //}
             //foreach (BlockDevice device in BlockDevice.Devices)
             //{
             //    Disk disk = new Disk(device);
@@ -115,7 +117,7 @@ namespace MeteorDOS
             Console.WriteLine("[[ ------------------------------------------ ]]");
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.White;
-            UserManager.LoginPrompt();
+            //UserManager.LoginPrompt();
             DOSShell.Run();
         }
         public void RepairDisk()

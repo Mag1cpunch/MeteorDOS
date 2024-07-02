@@ -1,6 +1,9 @@
 ﻿using Cosmos.HAL.BlockDevice;
+using Cosmos.System.FileSystem;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 
 namespace MeteorDOS.Core.Filesystem
 {
@@ -9,14 +12,12 @@ namespace MeteorDOS.Core.Filesystem
         public ulong SectorStart;
         public ulong SectorLength;
         public ushort TotalSpace;
-        public ushort UsedSpace;
     }
     public struct FSCluster
     {
         public ulong ClusterStart;
         public ulong ClusterLength;
         public ushort TotalSpace;
-        public ushort UsedSpace;
     }
     public struct FSInfo
     {
@@ -25,108 +26,145 @@ namespace MeteorDOS.Core.Filesystem
         public byte SectorsPerCluster;
         public ulong FreeSectors;
     }
+    public struct DirectoryEntry
+    {
+        public byte[] Name;
+    }
     public class MOFS
     {
         public FSSector bs;
-        public BlockDevice maindisk;
+        public Disk maindisk;
+        public BlockDevice blockdisk;
         public static readonly byte[] Signature = new byte[4] { 0x4D, 0x4F, 0x46, 0x53 };
         public FSInfo fsinfo;
-        public MOFS(BlockDevice disk)
+        MBR mbrdisk;
+        GPT gptdisk;
+        MBR.PartInfo mbrpart;
+        GPT.GPartInfo gptpart;
+        public MOFS(Disk disk, int part)
         {
             maindisk = disk;
+            blockdisk = disk.Host;
+            if (maindisk.IsMBR)
+            {
+                mbrdisk = new MBR(blockdisk);
+                if (part < mbrdisk.Partitions.Count)
+                {
+                    mbrpart = mbrdisk.Partitions[part];
+                }
+                else
+                {
+                    throw new ArgumentOutOfRangeException("Partition index out of range");
+                }
+            }
+            else if (!maindisk.IsMBR)
+            {
+                gptdisk = new GPT(blockdisk);
+                if (part < gptdisk.Partitions.Count)
+                {
+                    gptpart = gptdisk.Partitions[part];
+                }
+                else
+                {
+                    throw new ArgumentOutOfRangeException("Partition index out of range");
+                }
+            }
+            else
+            {
+                throw new NotSupportedException("Disk partitioning style not supported");
+            }
+            InitializeBootSector();
+        }
+
+        private void InitializeBootSector()
+        {
             bs = new FSSector();
             byte[] bsdata = new byte[512];
-            Console.WriteLine("Reading Boot Sector...");
-            disk.ReadBlock(0, 1, ref bsdata);
-            Console.WriteLine("Done!");
-            Console.WriteLine("Checking FS signature...");
-            for (int i = 0; i < 3; i++) 
+            if (mbrpart != null)
             {
-                Console.WriteLine($"Checking sector offset {i}...");
-                if (bsdata[i] == Signature[i])
-                {
-                    Console.WriteLine($"Matched");
-                    continue;
-                }
-                throw new Exception("Invalid FS signature, Make sure your disk is formatted with MOFS set as a file system");
+                blockdisk.ReadBlock(mbrpart.StartSector, 1, ref bsdata);
+                ValidateSignature(bsdata);
+                SetupBootSector(mbrpart.StartSector, mbrpart.SectorCount);
             }
-            Console.WriteLine("Done!");
-            maindisk = disk;
-            Console.WriteLine("Setting up boot sector and FSInfo...");
-            bs.SectorStart = 0;
+            else if (gptpart != null)
+            {
+                blockdisk.ReadBlock(gptpart.StartSector, 1, ref bsdata);
+                ValidateSignature(bsdata);
+                SetupBootSector(gptpart.StartSector, gptpart.SectorCount);
+            }
+        }
+
+        private void ValidateSignature(byte[] data)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                if (data[i] != Signature[i])
+                {
+                    throw new Exception("Invalid FS signature. Ensure your disk is formatted with MOFS.");
+                }
+            }
+        }
+
+        private void SetupBootSector(ulong startSector, ulong sectorCount)
+        {
+            bs.SectorStart = startSector;
             bs.SectorLength = 1;
             bs.TotalSpace = 512;
-            foreach (byte b in bsdata)
+            fsinfo = new FSInfo
             {
-                if (b > 0) bs.UsedSpace++;
-            }
-            fsinfo = new FSInfo();
-            fsinfo.TotalSectors = maindisk.BlockCount;
-            fsinfo.FreeSectors = fsinfo.TotalSectors;
-            fsinfo.SectorsPerCluster = bsdata[4];
-            fsinfo.TotalClusters = fsinfo.TotalSectors / fsinfo.SectorsPerCluster;
-            Console.WriteLine($"Done!");
-            Console.Clear();
+                TotalSectors = sectorCount,
+                FreeSectors = sectorCount - 1 // Subtract 1 for boot sector
+            };
         }
-        public FSCluster[] GetClusters()
-        {
-            List<FSCluster> clusters = new List<FSCluster>();
-            for (ulong i = 0; i < fsinfo.TotalSectors; i++)
-            {
-                FSCluster cluster = new FSCluster();
-                cluster.ClusterStart = i;
-                cluster.ClusterLength = (ulong)fsinfo.SectorsPerCluster - 1;
-                cluster.TotalSpace = 4096;
-                byte[] clusterdata = new byte[4096];
-                maindisk.ReadBlock(i, (ulong)fsinfo.SectorsPerCluster - 1 , ref clusterdata);
-                foreach (byte b in clusterdata) 
-                {
-                    if (b > 0) cluster.UsedSpace++;
-                }
-                clusters.Add(cluster);
-            }
-            return clusters.ToArray();
-        }
-        public FSSector[] GetSectors() 
+        //public FSCluster[] GetClusters()
+        //{
+        //    List<FSCluster> clusters = new List<FSCluster>();
+        //    for (ulong i = 0; i < fsinfo.TotalSectors; i++)
+        //    {
+        //        FSCluster cluster = new FSCluster();
+        //        cluster.ClusterStart = i;
+        //        cluster.ClusterLength = (ulong)fsinfo.SectorsPerCluster - 1;
+        //        cluster.TotalSpace = 4096;
+        //        byte[] clusterdata = new byte[4096];
+        //        blockdisk.ReadBlock(i, (ulong)fsinfo.SectorsPerCluster - 1 , ref clusterdata);
+        //        foreach (byte b in clusterdata) 
+        //        {
+        //            if (b > 0) cluster.UsedSpace++;
+        //        }
+        //        clusters.Add(cluster);
+        //    }
+        //    return clusters.ToArray();
+        //}
+        public FSSector[] GetSectors()
         {
             List<FSSector> sectors = new List<FSSector>();
             for (ulong i = 0; i < fsinfo.TotalSectors; i++)
             {
-                FSSector sector = new FSSector();
-                sector.SectorStart = i;
-                sector.SectorLength = 1;
-                sector.TotalSpace = 512;
-                byte[] sectordata = new byte[512];
-                maindisk.ReadBlock(i, 1, ref sectordata);
-                foreach (byte b in sectordata)
-                {
-                    if (b > 0) sector.UsedSpace++;
-                }
-                sectors.Add(sector);
+                sectors.Add(new FSSector { SectorStart = i, SectorLength = 1, TotalSpace = 512 });
             }
             return sectors.ToArray();
         }
-        public byte[] ReadCluster(ulong index)
-        {
-            FSCluster[] clusters = GetClusters();
-            if (index < (ulong)clusters.Length) 
-            {
-                byte[] data = new byte[4096];
-                maindisk.ReadBlock(clusters[index].ClusterStart, clusters[index].ClusterLength, ref data);
-                return data;
-            }
-            else
-            {
-                throw new IndexOutOfRangeException("Cannot read from cluster: Index out of bounds");
-            }
-        }
+        //public byte[] ReadCluster(ulong index)
+        //{
+        //    FSCluster[] clusters = GetClusters();
+        //    if (index < (ulong)clusters.Length) 
+        //    {
+        //        byte[] data = new byte[4096];
+        //        maindisk.ReadBlock(clusters[index].ClusterStart, clusters[index].ClusterLength, ref data);
+        //        return data;
+        //    }
+        //    else
+        //    {
+        //        throw new IndexOutOfRangeException("Cannot read from cluster: Index out of bounds");
+        //    }
+        //}
         public byte[] ReadSector(ulong index)
         {
             FSSector[] sectors = GetSectors();
             if (index < (ulong)sectors.Length)
             {
                 byte[] data = new byte[512];
-                maindisk.ReadBlock(sectors[index].SectorStart, sectors[index].SectorLength, ref data);
+                blockdisk.ReadBlock(sectors[index].SectorStart, sectors[index].SectorLength, ref data);
                 return data;
             }
             else
@@ -134,25 +172,25 @@ namespace MeteorDOS.Core.Filesystem
                 throw new IndexOutOfRangeException("Cannot read from sector: Index out of bounds");
             }
         }
-        public void WriteCluster(ulong index, byte[] data)
-        {
-            FSCluster[] clusters = GetClusters();
-            if (index < (ulong)clusters.Length)
-            {
-                if (data.Length <= 4096) 
-                {
-                    maindisk.WriteBlock(clusters[index].ClusterStart, clusters[index].ClusterLength, ref data);
-                }
-                else
-                {
-                    throw new Exception("Data size cannot be bigger than 4096 bytes");
-                }
-            }
-            else
-            {
-                throw new IndexOutOfRangeException("Cannot write to cluster: Index out of bounds");
-            }
-        }
+        //public void WriteCluster(ulong index, byte[] data)
+        //{
+        //    FSCluster[] clusters = GetClusters();
+        //    if (index < (ulong)clusters.Length)
+        //    {
+        //        if (data.Length <= 4096) 
+        //        {
+        //            maindisk.WriteBlock(clusters[index].ClusterStart, clusters[index].ClusterLength, ref data);
+        //        }
+        //        else
+        //        {
+        //            throw new Exception("Data size cannot be bigger than 4096 bytes");
+        //        }
+        //    }
+        //    else
+        //    {
+        //        throw new IndexOutOfRangeException("Cannot write to cluster: Index out of bounds");
+        //    }
+        //}
         public void WriteSector(ulong index, byte[] data)
         {
             FSSector[] sectors = GetSectors();
@@ -160,7 +198,7 @@ namespace MeteorDOS.Core.Filesystem
             {
                 if (data.Length <= 512)
                 {
-                    maindisk.WriteBlock(sectors[index].SectorStart, sectors[index].SectorLength, ref data);
+                    blockdisk.WriteBlock(sectors[index].SectorStart, sectors[index].SectorLength, ref data);
                 }
                 else
                 {
@@ -172,43 +210,78 @@ namespace MeteorDOS.Core.Filesystem
                 throw new IndexOutOfRangeException("Cannot write to sector: Index out of bounds");
             }
         }
-        public static void FormatDisk(BlockDevice disk, byte[] bsdata)
+        public bool IsSectorUsed(ulong index)
+        {
+            FSSector[] sectors = GetSectors();
+            if (index < (ulong)sectors.Length) {
+                byte[] data = new byte[512];
+                blockdisk.ReadBlock(sectors[index].SectorStart, sectors[index].SectorLength, ref data);
+                foreach (byte b in data)
+                {
+                    if (b > 0) return true;
+                }
+            }
+            else
+            {
+                throw new IndexOutOfRangeException("Index out of bounds");
+            }
+            return false;
+        }
+        public static void FormatDisk(Disk disk, int part, byte[] bsdata)
         {
             if (bsdata.Length > 508)
             {
-                throw new Exception("Boot Sector Data cannot be bigger than 508 bytes, if there's already an FS signature at the start of the boot sector you should remove it and provide a raw boot sector data with a size of 508 bytes");
+                throw new Exception("Boot Sector Data cannot be bigger than 508 bytes.");
             }
-            ulong sectors = disk.BlockCount;
-            Console.WriteLine("Formatting Hard Drive with MOFS set as file system...");
-            byte[] data = new byte[512];
-            for (ulong i = 0; i <= sectors; i++) 
+            BlockDevice blockdevice = disk.Host;
+            ulong sectors = 0;
+            ulong startSector = 0;
+
+            if (disk.IsMBR)
             {
-                Console.WriteLine($"Cleaning sector {i} / {sectors}...");
-                disk.WriteBlock(i, 1, ref data);
-                Console.WriteLine("Cleaned");
-            }
-            Console.WriteLine("Done!");
-            byte[] bootsector = new byte[512];
-            ushort index = 0;
-            Console.WriteLine("Aligning boot sector...");
-            for (ushort i = 0; i < 512; i++)
-            {
-                Console.WriteLine($"Processing boot sector offset {i} / {512}...");
-                if (i < 4)
+                MBR mbrdisk = new MBR(blockdevice);
+                if (part < mbrdisk.Partitions.Count)
                 {
-                    bootsector[i] = Signature[i];
-                    Console.WriteLine("Processed");
-                    continue;
+                    var mbrpart = mbrdisk.Partitions[part];
+                    sectors = mbrpart.SectorCount;
+                    startSector = mbrpart.StartSector;
                 }
-                bootsector[i] = bsdata[index];
-                index++;
-                Console.WriteLine("Processed");
+                else
+                {
+                    throw new ArgumentOutOfRangeException("Partition index out of range");
+                }
             }
-            Console.WriteLine("Done!");
-            Console.WriteLine("Saving boot sector to disk...");
-            disk.WriteBlock(0, 1, ref bootsector);
-            Console.WriteLine("Done!");
-            Console.Clear();
+            else if (!disk.IsMBR)
+            {
+                GPT gptdisk = new GPT(blockdevice);
+                if (part < gptdisk.Partitions.Count)
+                {
+                    var gptpart = gptdisk.Partitions[part];
+                    sectors = gptpart.SectorCount;
+                    startSector = gptpart.StartSector;
+                }
+                else
+                {
+                    throw new ArgumentOutOfRangeException("Partition index out of range");
+                }
+            }
+            else
+            {
+                throw new NotSupportedException("Partitioning type not supported");
+            }
+
+            byte[] bootsector = new byte[512];
+            using (MemoryStream stream = new MemoryStream(bootsector))
+            {
+                using (BinaryWriter writer = new BinaryWriter(stream))
+                {
+                    writer.Write(Signature);
+                    writer.Write(8);
+                    writer.Write(sectors);
+                }
+            }
+
+            blockdevice.WriteBlock(startSector, 1, ref bootsector);
         }
     }
 }
