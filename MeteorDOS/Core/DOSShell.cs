@@ -1,17 +1,16 @@
 ﻿using MeteorDOS.Core.Packages;
 using MeteorDOS.Core.Processing;
 using MeteorDOS.Core.Processing.CommandManager;
-using MeteorDOS.Core.Processing.Threading;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace MeteorDOS.Core
 {
     public unsafe class DOSShell
     {
+        public static CommandExecutionStatus CMDStatus = CommandExecutionStatus.None;
         public static void InitShell()
         {
             CDCommand cd = new CDCommand();
@@ -21,6 +20,8 @@ namespace MeteorDOS.Core
             LogoutCommand logoutCommand = new LogoutCommand();
             MakeUserCommand makeUserCommand = new MakeUserCommand();
             RemoveUserCommand removeUserCommand = new RemoveUserCommand();
+            LSCommand LSCommand = new LSCommand();
+            EchoCommand echoCommand = new EchoCommand();
             Commands.RegisterCommand(cd);
             Commands.RegisterCommand(rebootCommand);
             Commands.RegisterCommand(shutdownCommand);
@@ -28,6 +29,28 @@ namespace MeteorDOS.Core
             Commands.RegisterCommand(makeUserCommand);
             Commands.RegisterCommand(logoutCommand);
             Commands.RegisterCommand(removeUserCommand);
+            Commands.RegisterCommand(LSCommand);
+            Commands.RegisterCommand(echoCommand);
+        }
+        public static void KeyHandler()
+        {
+            while (true)
+            {
+                if (Cosmos.System.KeyboardManager.TryReadKey(out var key))
+                {
+                    if (Cosmos.System.KeyboardManager.ControlPressed)
+                    {
+                        if (key.Key == Cosmos.System.ConsoleKeyEx.C)
+                        {
+                            if (!Commands.IsRunning) continue;
+                            Commands.CanRun = false;
+                            while (CMDStatus != CommandExecutionStatus.Aborted) { };
+                            CMDStatus = CommandExecutionStatus.None;
+                            Commands.CanRun = true;
+                        }
+                    }
+                }
+            }
         }
         public static void Run()
         {
@@ -36,22 +59,33 @@ namespace MeteorDOS.Core
             //Threading.StartThread(thread1);
             //Threading.StartThread(thread2);
             //while (true) { }
+            //Cosmos.System.Thread keyhandler = new Cosmos.System.Thread(KeyHandler);
+            //keyhandler.Start();
             while (true)
             {
-                if (Environment.CurrentDirectory == @"0:\")
+                try
                 {
-                    Console.Write(Environment.CurrentDirectory + $"{UserManager.CurrentUser}>> ");
+                    if (Environment.CurrentDirectory == @"0:\")
+                    {
+                        Console.Write(Environment.CurrentDirectory + $"{UserManager.CurrentUser}>> ");
+                    }
+                    else
+                    {
+                        Console.Write(Environment.CurrentDirectory + @"\" + $"{UserManager.CurrentUser}>> ");
+                    }
+                    string input = Console.ReadLine();
+                    if (string.IsNullOrEmpty(input))
+                    {
+                        continue;
+                    }
+                    CMDStatus = Commands.ExecuteCommand(input);
                 }
-                else
+                catch (Exception ex) 
                 {
-                    Console.Write(Environment.CurrentDirectory + @"\" + $"{UserManager.CurrentUser}>> ");
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"An error has occurred: {ex.Message}");
+                    Console.ForegroundColor = ConsoleColor.White;
                 }
-                string input = Console.ReadLine();
-                if (string.IsNullOrEmpty(input)) 
-                {
-                    continue;
-                }
-                Commands.ExecuteCommand(input);
             }
         }
     }

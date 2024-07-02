@@ -11,6 +11,6 @@ namespace MeteorDOS.Core.Processing.CommandManager
         public string Name { get; }
         public string Usage { get; }
         public string HelpMessage { get; }
-        public void Execute(string[] args);
+        public CommandExecutionStatus Execute(string[] args);
     }
 }

@@ -5,9 +5,18 @@ using System.Threading.Tasks;
 
 namespace MeteorDOS.Core.Processing.CommandManager
 {
+    public enum CommandExecutionStatus
+    {
+        Success,
+        Failed,
+        Aborted,
+        None
+    }
     public class Commands
     {
         private static List<ICommand> commands = new List<ICommand>();
+        public static bool CanRun = true;
+        public static bool IsRunning = false;
         public static void RegisterCommand(ICommand command)
         {
             if (CommandExists(command.Name)) 
@@ -47,12 +56,13 @@ namespace MeteorDOS.Core.Processing.CommandManager
             }
             return null;
         }
-        public static void ExecuteCommand(string command)
+        public static CommandExecutionStatus ExecuteCommand(string command)
         {
+            IsRunning = true;
             if (string.IsNullOrWhiteSpace(command))
             {
                 Console.WriteLine("Command cannot be null or empty.");
-                return;
+                return CommandExecutionStatus.None;
             }
 
             string[] args = GetCommandArgs(command);
@@ -62,10 +72,12 @@ namespace MeteorDOS.Core.Processing.CommandManager
             if (cmd == null)
             {
                 Console.WriteLine($"Command not found: {commandName}");
-                return;
+                return CommandExecutionStatus.None;
             }
 
-            cmd.Execute(args);
+            CommandExecutionStatus status = cmd.Execute(args);
+            IsRunning = false;
+            return status;
         }
         public static string[] GetCommandArgs(string command)
         {

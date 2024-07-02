@@ -1,5 +1,6 @@
 ﻿using Cosmos.System.FileSystem.VFS;
 using MeteorDOS.Core.Encryption;
+using MeteorDOS.Core.Processing.CommandManager;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -205,14 +206,16 @@ namespace MeteorDOS.Core.Processing
             return GetUserHashes().Length;
         }
 
-        public static void RegisterPrompt()
+        public static CommandExecutionStatus RegisterPrompt()
         {
             while (true)
             {
+                //if (!Commands.CanRun) return CommandExecutionStatus.Aborted;
                 Console.Write("Username: ");
                 string username = Console.ReadLine();
                 Console.Write("Password: ");
                 string password = Console.ReadLine();
+                //if (!Commands.CanRun) return CommandExecutionStatus.Aborted;
                 if (UserExists(username))
                 {
                     Console.WriteLine("User with that name already exists");
@@ -229,7 +232,7 @@ namespace MeteorDOS.Core.Processing
                     continue;
                 }
                 CreateUser(username, password);
-                break;
+                return CommandExecutionStatus.Success;
             }
         }
 

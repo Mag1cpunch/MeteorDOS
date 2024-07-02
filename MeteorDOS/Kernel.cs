@@ -105,8 +105,8 @@ namespace MeteorDOS
             //    Console.ReadLine();
             //    Sys.Power.Shutdown();
             //}
-            DesktopManager.Init(800, 600);
-            DesktopManager.Run();
+            //DesktopManager.Init(800, 600);
+            //DesktopManager.Run();
             Console.Clear();
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("[[ ------------------------------------------ ]]");
