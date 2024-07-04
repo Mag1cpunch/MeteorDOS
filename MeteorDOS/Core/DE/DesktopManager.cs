@@ -31,8 +31,8 @@ namespace MeteorDOS.Core.DE
                 screen.DrawFilledRectangle(Color.White, 100, 100, (ushort)(screen.Mode.Width - 200), (ushort)(screen.Mode.Height - 200));
                 screen.DrawRectangle(Color.LightGray, 100, 100, (ushort)(screen.Mode.Width - 200), (ushort)(screen.Mode.Height - 200));
                 screen.DrawImageAlpha(cursoridle, (int)MouseManager.X, (int)MouseManager.Y);
-                screen.Display();
                 Heap.Collect();
+                screen.Display();
             }
         }
     }
