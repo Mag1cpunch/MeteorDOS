@@ -8,6 +8,18 @@ using System.Text;
 
 namespace MeteorDOS.Core.Filesystem
 {
+    public enum DirectoryEntryType
+    {
+        Directory = 0,
+        File = 1,
+    }
+    public enum Permissions
+    {
+        None = 0,
+        Read = 1,
+        Write = 2,
+        ReadWrite = 3,
+    }
     public struct FSSector
     {
         public ulong SectorStart;
@@ -22,9 +34,13 @@ namespace MeteorDOS.Core.Filesystem
     {
         public ulong TotalSectors;
         public ulong TotalClusters;
+        public ulong TotalSuperClusters;
         public byte SectorsPerCluster;
         public ulong FreeSectors;
         public byte ClustersPerSuperCluster;
+        public ulong UsedEntryBlocks;
+        public ulong UsedMetadataBlocks;
+        public ulong UsedDataBlocks;
     }
     public struct DirectoryEntry
     {
@@ -40,14 +56,11 @@ namespace MeteorDOS.Core.Filesystem
     public struct MetadataBlock
     {
         public ulong Id;
-        public ulong ParentDirectoryName;
+        public byte[] ParentDirectoryName;
         public ulong Version;
         public ulong DataBlockStartOffset;
         public ulong DataBlockSize;
         public ulong DataBlockCount;
-        public ulong ExtendedDataBlockStartOffset;
-        public ulong ExtendedDataBlockSize;
-        public ulong ExtendedDataBlockCount;
         public ulong DirectoryEntryStartOffset;
         public byte AllocationType;
     }
@@ -68,6 +81,18 @@ namespace MeteorDOS.Core.Filesystem
         MBR.PartInfo mbrpart;
         GPT.GPartInfo gptpart;
         private ulong RootEntriesCount;
+        private const double DIRECTORY_ENTRIES_PROPORTION = 0.10; // 10% for directory entries
+        private const double METADATA_BLOCKS_PROPORTION = 0.20; // 20% for metadata blocks
+        private const double DATA_BLOCKS_PROPORTION = 0.70; // 70% for data blocks
+        private long DIRECTORY_ENTRIES_SIZE;
+        private long METADATA_BLOCKS_SIZE;
+        private long DATA_BLOCKS_SIZE;
+        ulong DIRECTORY_ENTRIES_START_OFFSET;
+        ulong DIRECTORY_ENTRIES_END_OFFSET;
+        ulong METADATA_BLOCKS_START_OFFSET;
+        ulong METADATA_BLOCKS_END_OFFSET;
+        ulong DATA_BLOCKS_START_OFFSET;
+        ulong DATA_BLOCKS_END_OFFSET;
         public MOFS(Disk disk, int part)
         {
             maindisk = disk;
@@ -112,12 +137,30 @@ namespace MeteorDOS.Core.Filesystem
                 blockdisk.ReadBlock(mbrpart.StartSector, 1, ref bsdata);
                 ValidateSignature(bsdata);
                 SetupBootSector(mbrpart.StartSector, mbrpart.SectorCount, bsdata);
+                DIRECTORY_ENTRIES_SIZE = (long)(mbrpart.SectorCount * 512 * DIRECTORY_ENTRIES_PROPORTION);
+                METADATA_BLOCKS_SIZE = (long)(mbrpart.SectorCount * 512 * METADATA_BLOCKS_PROPORTION);
+                DATA_BLOCKS_SIZE =  mbrpart.SectorCount * 512 - DIRECTORY_ENTRIES_SIZE - METADATA_BLOCKS_SIZE;
+                DIRECTORY_ENTRIES_START_OFFSET = 1;
+                DIRECTORY_ENTRIES_END_OFFSET = DIRECTORY_ENTRIES_START_OFFSET + ((ulong)DIRECTORY_ENTRIES_SIZE / 512) - 1;
+                METADATA_BLOCKS_START_OFFSET = DIRECTORY_ENTRIES_END_OFFSET + 1;
+                METADATA_BLOCKS_END_OFFSET = METADATA_BLOCKS_START_OFFSET + ((ulong)METADATA_BLOCKS_SIZE / 512) - 1;
+                DATA_BLOCKS_START_OFFSET = METADATA_BLOCKS_END_OFFSET + 1;
+                DATA_BLOCKS_END_OFFSET = DATA_BLOCKS_START_OFFSET + ((ulong)DATA_BLOCKS_SIZE / 512) - 1;
             }
             else if (gptpart != null)
             {
                 blockdisk.ReadBlock(gptpart.StartSector, 1, ref bsdata);
                 ValidateSignature(bsdata);
                 SetupBootSector(gptpart.StartSector, gptpart.SectorCount, bsdata);
+                DIRECTORY_ENTRIES_SIZE = (long)(gptpart.SectorCount * 512 * DIRECTORY_ENTRIES_PROPORTION - 512);
+                METADATA_BLOCKS_SIZE = (long)(gptpart.SectorCount * 512 * METADATA_BLOCKS_PROPORTION - 512);
+                DATA_BLOCKS_SIZE = (long)gptpart.SectorCount * 512 - DIRECTORY_ENTRIES_SIZE - METADATA_BLOCKS_SIZE - 512;
+                DIRECTORY_ENTRIES_START_OFFSET = 1;
+                DIRECTORY_ENTRIES_END_OFFSET = DIRECTORY_ENTRIES_START_OFFSET + ((ulong)DIRECTORY_ENTRIES_SIZE / 512) - 1;
+                METADATA_BLOCKS_START_OFFSET = DIRECTORY_ENTRIES_END_OFFSET + 1;
+                METADATA_BLOCKS_END_OFFSET = METADATA_BLOCKS_START_OFFSET + ((ulong)METADATA_BLOCKS_SIZE / 512) - 1;
+                DATA_BLOCKS_START_OFFSET = METADATA_BLOCKS_END_OFFSET + 1;
+                DATA_BLOCKS_END_OFFSET = DATA_BLOCKS_START_OFFSET + ((ulong)DATA_BLOCKS_SIZE / 512) - 1;
             }
         }
 
@@ -147,7 +190,21 @@ namespace MeteorDOS.Core.Filesystem
                 else if (i == 5) fsinfo.ClustersPerSuperCluster = bootsector[i];
                 else if (i == 6) fsinfo.TotalSectors = (ulong)BitConverter.ToInt64(bootsector, i);
                 else if (i == 14) fsinfo.TotalClusters = (ulong)BitConverter.ToInt64(bootsector, i);
+                else if (i == 22) fsinfo.TotalSuperClusters = (ulong)BitConverter.ToInt64(bootsector, i);
             }
+        }
+        public FSCluster[] GetSuperClusters()
+        {
+            List<FSCluster> clusters = new List<FSCluster>();
+            for (ulong i = 1; i < fsinfo.TotalSectors; i++)
+            {
+                if (i + 7 > fsinfo.TotalSectors) break;
+                FSCluster cluster = new FSCluster();
+                cluster.ClusterStart = i;
+                cluster.ClusterLength = (ulong)fsinfo.SectorsPerCluster * fsinfo.ClustersPerSuperCluster;
+                clusters.Add(cluster);
+            }
+            return clusters.ToArray();
         }
         public FSCluster[] GetClusters()
         {
@@ -157,7 +214,7 @@ namespace MeteorDOS.Core.Filesystem
                 if (i + 7 > fsinfo.TotalSectors) break;
                 FSCluster cluster = new FSCluster();
                 cluster.ClusterStart = i;
-                cluster.ClusterLength = (ulong)fsinfo.SectorsPerCluster - 1;
+                cluster.ClusterLength = (ulong)fsinfo.SectorsPerCluster;
                 clusters.Add(cluster);
             }
             return clusters.ToArray();
@@ -243,9 +300,161 @@ namespace MeteorDOS.Core.Filesystem
                 throw new IndexOutOfRangeException("Cannot write to sector: Index out of bounds");
             }
         }
+        public byte[] ReadSuperCluster(ulong index)
+        {
+            FSCluster[] clusters = GetSuperClusters();
+            if (index < (ulong)clusters.Length)
+            {
+                byte[] data = new byte[32768];
+                blockdisk.ReadBlock(clusters[index].ClusterStart, clusters[index].ClusterLength, ref data);
+                return data;
+            }
+            else
+            {
+                throw new IndexOutOfRangeException("Cannot read from cluster: Index out of bounds");
+            }
+        }
         public void WriteSuperCluster(ulong index, byte[] data)
         {
+            FSCluster[] clusters = GetSuperClusters();
+            if (index < (ulong)clusters.Length)
+            {
+                if (data.Length <= 32768)
+                {
+                    blockdisk.WriteBlock(clusters[index].ClusterStart, clusters[index].ClusterLength, ref data);
+                    clusters = null;
+                }
+                else
+                {
+                    clusters = null;
+                    throw new Exception("Data size cannot be bigger than 32768 bytes");
+                }
+            }
+            else
+            {
+                clusters = null;
+                throw new IndexOutOfRangeException("Cannot write to supercluster: Index out of bounds");
+            }
+        }
+        public (ulong, ushort) GetFreeDataOffset()
+        {
+            ulong start = DATA_BLOCKS_START_OFFSET;
+            ulong end = DATA_BLOCKS_END_OFFSET;
+            ulong offset = 296 * fsinfo.UsedDataBlocks;
 
+            for (ulong i = start; i <= end; i++)
+            {
+                byte[] data = ReadSector(i);
+                for (ushort j = 0; j < data.Length; j += 296)
+                {
+                    if (j > 512) break;
+                    bool isFree = true;
+                    for (ushort k = 0; k < 296; k++)
+                    {
+                        if (data[j + k] != 0)
+                        {
+                            isFree = false;
+                            break;
+                        }
+                    }
+                    if (isFree)
+                    {
+                        return (i, j);
+                    }
+                }
+            }
+            throw new Exception();
+        }
+        public (ulong, ushort) GetFreeMetadataOffset()
+        {
+            ulong start = METADATA_BLOCKS_START_OFFSET;
+            ulong end = METADATA_BLOCKS_END_OFFSET;
+            ulong offset = 296 * fsinfo.UsedMetadataBlocks;
+
+            for (ulong i = start; i <= end; i++)
+            {
+                byte[] data = ReadSector(i);
+                for (ushort j = 0; j < data.Length; j += 296)
+                {
+                    if (j > 512) break;
+                    bool isFree = true;
+                    for (ushort k = 0; k < 296; k++)
+                    {
+                        if (data[j + k] != 0)
+                        {
+                            isFree = false;
+                            break;
+                        }
+                    }
+                    if (isFree)
+                    {
+                        return (i, j);
+                    }
+                }
+            }
+            throw new Exception();
+        }
+        public (ulong, ushort) GetFreeDirectoryEntryOffset()
+        {
+            ulong start = DIRECTORY_ENTRIES_START_OFFSET;
+            ulong end = DIRECTORY_ENTRIES_END_OFFSET;
+            ulong offset = 297 * fsinfo.UsedEntryBlocks;
+
+            for (ulong i = start; i <= end; i++)
+            {
+                byte[] data = ReadSector(i);
+                for (ushort j = 0; j < data.Length; j += 297)
+                {
+                    if (j > 512) break;
+                    bool isFree = true;
+                    for (ushort k = 0; k < 297; k++)
+                    {
+                        if (data[j + k] != 0)
+                        {
+                            isFree = false;
+                            break;
+                        }
+                    }
+                    if (isFree)
+                    {
+                        return (i, j);
+                    }
+                }
+            }
+            throw new Exception();
+        }
+        public ulong AddDirectoryEntry(string name, DirectoryEntryType type, Permissions permissions)
+        {
+            if (name.Length > 255) throw new Exception("Directory name cannot be longer than 255 characters");
+            (ulong cluster, ushort startoffset) metadataoffset = (0, 0);
+            (ulong cluster, ushort startoffset) direntryoffset = (0, 0);
+            try
+            {
+                metadataoffset = GetFreeMetadataOffset();
+                direntryoffset = GetFreeDirectoryEntryOffset();
+            }
+            catch (Exception ex) { }
+            char[] namechars = new char[255];
+            for (byte i = 0; i < name.Length; i++)
+            {
+                namechars[i] = name[i];
+            }
+            byte[] direntry = new byte[297];
+            using (MemoryStream ms = new MemoryStream(direntry))
+            {
+                using (BinaryWriter bw = new BinaryWriter(ms))
+                {
+                    bw.Write(namechars); // Name
+                    bw.Write((byte)type); // Type
+                    bw.Write((ulong)0); // Size
+                    bw.Write((byte)permissions); // Permissions
+                    bw.Write(PackRTC(RTC.Year, RTC.Month, RTC.DayOfTheMonth, RTC.Hour, RTC.Minute, RTC.Second)); // Creation time
+                    bw.Write(PackRTC(RTC.Year, RTC.Month, RTC.DayOfTheMonth, RTC.Hour, RTC.Minute, RTC.Second)); // Modification time
+                    bw.Write(PackRTC(RTC.Year, RTC.Month, RTC.DayOfTheMonth, RTC.Hour, RTC.Minute, RTC.Second)); // Last access time
+                    bw.Write(metadataoffset.Item1); // Metadata block offset
+
+                }
+            }
         }
         private void WriteDirectory(string name, bool IsParent, string parentdirectoryname, bool ParentIsSubdirectory = false)
         {
@@ -264,6 +473,7 @@ namespace MeteorDOS.Core.Filesystem
                         bw.Write(PackRTC(RTC.Year, RTC.Month, RTC.DayOfTheMonth, RTC.Hour, RTC.Minute, RTC.Second));
                         bw.Write(PackRTC(RTC.Year, RTC.Month, RTC.DayOfTheMonth, RTC.Hour, RTC.Minute, RTC.Second));
                         bw.Write(PackRTC(RTC.Year, RTC.Month, RTC.DayOfTheMonth, RTC.Hour, RTC.Minute, RTC.Second));
+
                     }
                 }
             }
@@ -391,6 +601,8 @@ namespace MeteorDOS.Core.Filesystem
                     writer.Write((byte)8); // ClustersPerSuperCluster
                     writer.Write(sectors); // Total Sectors
                     writer.Write(sectors / 8); // Total Clusters
+                    writer.Write(sectors / 8 / 8); // Total SuperClusters
+                    writer.Write((ulong)0); // Number of root entries
                 }
             }
 

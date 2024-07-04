@@ -32,8 +32,43 @@ namespace MeteorDOS.Core.DE
             {
                 if (i == x) 
                 {
-
+                    for (int j = 0; j < Container.Height; j++) 
+                    {
+                        if (j == y)
+                        {
+                            Container.RawData[(y * Container.Width + x) * 32] = clr.b;
+                            Container.RawData[(y * Container.Width + x) * 32 + 1] = clr.g;
+                            Container.RawData[(y * Container.Width + x) * 32 + 2] = clr.r;
+                            Container.RawData[(y * Container.Width + x) * 32 + 3] = clr.a;
+                        }
+                    }
                 }
+            }
+        }
+        public void DrawPixel(int x, int y, byte a, byte r, byte g, byte b)
+        {
+            for (int i = 0; i < Container.Width; i++)
+            {
+                if (i == x)
+                {
+                    for (int j = 0; j < Container.Height; j++)
+                    {
+                        if (j == y)
+                        {
+                            Container.RawData[(y * Container.Width + x) * 32] = b;
+                            Container.RawData[(y * Container.Width + x) * 32 + 1] = g;
+                            Container.RawData[(y * Container.Width + x) * 32 + 2] = r;
+                            Container.RawData[(y * Container.Width + x) * 32 + 3] = a;
+                        }
+                    }
+                }
+            }
+        }
+        public void DrawRectangle(int x, int y, int width, int height, Color color)
+        {
+            for (int i = 0; i < Container.Width; x++)
+            {
+                if (i == x)
             }
         }
         (byte a, byte r, byte g, byte b) ExtractARGB(int packedColor)
